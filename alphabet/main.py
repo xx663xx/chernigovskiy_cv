@@ -47,7 +47,7 @@ def get_image_distance(image1, image2):
     return np.sqrt(np.sum((image1 - image2) ** 2))
 
 alphabet_names = ['A', 'B', '8', '0', '1', 'W', 'X', '*', '-', '/', 'P', 'D']
-alphabet_image = imread(save_path / 'img' / 'alphabet_ext.png')
+alphabet_image = imread(save_path /'img' / 'alphabet_ext.png')
 alphabet_binary = make_binary(alphabet_image, 100, 'lt')
 alphabet_labeled = label(alphabet_binary)
 alphabet_regions = [region for region in regionprops(alphabet_labeled) if region.area > 20]
