@@ -1,75 +1,88 @@
 import matplotlib.pyplot as plt
 import numpy as np
-from skimage.measure import label, regionprops
-from skimage.io import imread
 from pathlib import Path
-
-def count_holes(region):
-    shape = region.image.shape
-    new_image = np.zeros((shape[0] + 2, shape[1] + 2))
-    new_image[1:-1, 1:-1] = region.image
-    new_image = np.logical_not(new_image)
-    labeled = label(new_image)
-    return np.max(labeled) - 1
-
-def classificator(region):
-    holes = count_holes(region)
-    if holes == 2:
-        vlines = (np.sum(region.image, 0) == region.image.shape[0]).sum()
-        vlines = vlines / region.image.shape[1]
-        if vlines > 0.2:
-            return "B"
-        else:
-            return "8"
-    elif holes == 1:
-        if region.eccentricity > 0.58:
-            return "0"
-        else:
-            return "A"
-    else:
-        if region.image.sum() / region.image.size == 1.0:
-            return "-"
-        shape = region.image.shape
-        aspect = np.min(shape) / np.max(shape)
-        if aspect > 0.9:
-            return "*"
-        vlines = (np.sum(region.image, 0) == region.image.shape[0]).sum()
-        hlines = (np.sum(region.image, 1) == region.image.shape[1]).sum()
-        if vlines > 0 and hlines > 0:
-            return "1"
-        labeled = label(np.logical_not(region.image))
-        bays = 0
-        for r in regionprops(labeled):
-            if r.area > 3:
-                bays += 1
-        if bays == 2:
-            return "/"
-        elif bays == 4:
-            return "X"
-        elif bays == 5:
-            return "W"
-    return "?"
+from skimage.io import imread
+from skimage.measure import label, regionprops
+from skimage.transform import resize
 
 save_path = Path(__file__).parent
 
-image = imread(save_path / "img" / "alphabet.png")[:, :, :-1]
-abinary = image.mean(2) > 0
-alabeled = label(abinary)
-print(np.max(alabeled))
-aprops = regionprops(alabeled)
+def make_binary(image, threshold, mode):
+    if image.ndim == 3:
+        image = image[:, :, :3].mean(axis=2)
+    if mode == 'lt':
+        return image < threshold
+    return image > threshold
 
+def sort_regions(regions):
+    return sorted(regions, key = lambda region: (region.bbox[1], region.bbox[0]))
+
+def count_holes(region_image):
+    temp = np.zeros((region_image.shape[0] + 2, region_image.shape[1] + 2), dtype=bool)
+    temp[1:-1, 1:-1] = region_image
+    inv = np.logical_not(temp)
+    labeled = label(inv)
+    return np.max(labeled) - 1
+
+def get_feature_vector(region_image):
+    small = resize(region_image.astype(float), (20, 20), order=0, anti_aliasing=False, preserve_range=True)
+    small = (small > 0.5).astype(float)
+    h, w = region_image.shape
+    area = region_image.sum() / region_image.size
+    aspect = h / w
+    holes = count_holes(region_image)
+    row_sums = small.sum(axis=1) / 20
+    col_sums = small.sum(axis=0) / 20
+    vector = [area, aspect, holes]
+    vector.extend(row_sums.tolist())
+    vector.extend(col_sums.tolist())
+    vector.extend(small.flatten().tolist())
+    return np.array(vector, dtype = float)
+
+def get_distance(vector1, vector2):
+    return np.sqrt(np.sum((vector1 - vector2) ** 2))
+
+alphabet_names = ['A', 'B', '8', '0', '1', 'W', 'X', '*', '/', '-']
+alphabet_image = imread(save_path / 'img' / 'alphabet-small.png')
+alphabet_binary = make_binary(alphabet_image, 200, 'lt')
+alphabet_labeled = label(alphabet_binary)
+alphabet_regions = [region for region in regionprops(alphabet_labeled) if region.area > 20]
+alphabet_regions = sort_regions(alphabet_regions)
+patterns = {}
+
+for i in range(len(alphabet_regions)):
+    symbol = alphabet_names[i]
+    patterns[symbol] = get_feature_vector(alphabet_regions[i].image)
+
+image = imread(save_path / 'img' / 'alphabet.png')
+binary = make_binary(image, 1, 'gt')
+labeled = label(binary)
+regions = [region for region in regionprops(labeled) if region.area > 20]
 result = {}
-image_path = save_path / "out_tree"
-image_path.mkdir(exist_ok=True)
+out_path = save_path / 'out_vector'
+out_path.mkdir(exist_ok = True)
 plt.figure(figsize=(5, 7))
-for region in aprops:
-    symbol = classificator(region)
-    if symbol not in result:
-        result[symbol] = 0
-    result[symbol] += 1
+
+for region in regions:
+    vector = get_feature_vector(region.image)
+    best_symbol = ''
+    best_distance = 999999999
+
+    for symbol in patterns:
+        current_distance = get_distance(vector, patterns[symbol])
+        if current_distance < best_distance:
+            best_distance = current_distance
+            best_symbol = symbol
+
+    if best_symbol not in result:
+        result[best_symbol] = 0
+    result[best_symbol] += 1
+
     plt.cla()
-    plt.title(f"Class - '{symbol}'")
-    plt.imshow(region.image)
-    plt.savefig(image_path / f"image_{region.label}.png")
+    plt.title("Class - '" + best_symbol + "'")
+    plt.imshow(region.image, cmap='gray')
+    plt.savefig(out_path / ('image_' + str(region.label) + '.png'))
+
+print('Распознавание через вектор признаков')
 print(result)
-print(f"{1.0 - result.get('?', 0) / len(aprops)}")
+print(f'Всего найдено {len(regions)} символов')
