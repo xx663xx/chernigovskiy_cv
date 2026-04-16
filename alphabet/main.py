@@ -61,11 +61,11 @@ for i in range(len(alphabet_regions)):
     pattern_images[symbol] = get_small_image(alphabet_regions[i].image)
 
 symbols_image = imread(save_path / 'img' / 'symbols.png')
-symbols_binary = make_binary(symbols_image, 100, 'gt')
+symbols_binary = make_binary(symbols_image, 10, 'gt')
 symbols_labeled = label(symbols_binary)
 symbol_regions = []
 for region in regionprops(symbols_labeled):
-    if region.area > 20 and region.area < 1000:
+    if region.area > 3:
         symbol_regions.append(region)
 
 result = {}
