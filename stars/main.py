@@ -1,20 +1,27 @@
 import numpy as np
-from scipy.ndimage import label
+from scipy.ndimage import binary_hit_or_miss
 
-image = np.load('stars.npy')
-labeled, _ = label(image)
+img = np.load("stars.npy").astype(bool)
 
-clean = np.zeros_like(image)
-for i in range(1, labeled.max() + 1):
-    obj = labeled == i
-    ys, xs = np.where(obj)
-    h = ys.max() - ys.min() + 1
-    w = xs.max() - xs.min() + 1
-    if h == 3 and w == 3:
-        continue
-    if h == 1 and w == 1:
-        continue
-    clean[obj] = image[obj]
+plus = np.array([
+    [0, 0, 1, 0, 0],
+    [0, 0, 1, 0, 0],
+    [1, 1, 1, 1, 1],
+    [0, 0, 1, 0, 0],
+    [0, 0, 1, 0, 0],
+], dtype=bool)
 
-_, num_stars = label(clean.astype(bool))
-print(f'{num_stars} звездочек')
+cross = np.array([
+    [1, 0, 0, 0, 1],
+    [0, 1, 0, 1, 0],
+    [0, 0, 1, 0, 0],
+    [0, 1, 0, 1, 0],
+    [1, 0, 0, 0, 1],
+], dtype=bool)
+
+plus_n = binary_hit_or_miss(img, structure1=plus, structure2=~plus).sum()
+x_n = binary_hit_or_miss(img, structure1=cross, structure2=~cross).sum()
+
+print("Плюсов:", int(plus_n))
+print("Крестов:", int(x_n))
+print("Всего:", int(plus_n + x_n))
